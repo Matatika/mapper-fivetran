@@ -1,0 +1,39 @@
+version: 1
+send_anonymous_usage_stats: true
+project_id: "mapper-fivetran"
+default_environment: test
+environments:
+- name: test
+plugins:
+  extractors:
+  - name: tap-smoke-test
+    variant: meltano
+    pip_url: git+https://github.com/meltano/tap-smoke-test.git
+    config:
+      streams:
+      - stream_name: animals
+        input_filename: https://raw.githubusercontent.com/meltano/tap-smoke-test/main/demo-data/animals-data.jsonl
+
+  loaders:
+  - name: target-jsonl
+    variant: andyh1203
+    pip_url: target-jsonl
+
+  mappers:
+  - name: "mapper-fivetran"
+    namespace: "mapper_fivetran"
+    pip_url: -e .
+
+    # TODO: Declare settings and their types here:
+    settings:
+    - name: example_config
+      kind: string
+      label: Example Config
+      description: An example configuration setting
+
+    # TODO: Declare mapping instances here:
+    # https://docs.meltano.com/guide/mappers/#example-1
+    mappings:
+    - name: example
+      config:
+        example_config: foo
