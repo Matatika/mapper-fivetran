@@ -4,6 +4,16 @@
 
 Built with the [Meltano Mapper SDK](https://sdk.meltano.com) for Singer Mappers.
 
+## Overview
+
+`mapper-fivetran` maps incoming data to a Fivetran-compatible format. This involves:
+
+- Flattening top-level properties
+- Converting property names to snake-case
+- Adding properties pertaining to [Fivetran system columns](https://fivetran.com/docs/core-concepts/system-columns-and-tables)
+  - `_fivetran_id`: MD5-hash of a record, added when no `key_properties` are defined for the stream
+  - `_fivetran_synced`: ISO8601 timestamp of when the record was processed by the mapper
+
 <!--
 
 Developer TODO: Update the below as needed to correctly describe the install procedure. For instance, if you do not have a PyPI repo, or if you want users to directly install from your git repo, you can modify this step as appropriate.

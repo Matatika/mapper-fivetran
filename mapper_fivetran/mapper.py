@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import typing as t
 
 import humps
@@ -15,6 +17,10 @@ from typing_extensions import override
 
 if t.TYPE_CHECKING:
     from pathlib import PurePath
+
+
+FIVETRAN_ID = "_fivetran_id"
+FIVETRAN_SYNCED = "_fivetran_synced"
 
 
 class FivetranStreamMap(DefaultStreamMap):
@@ -37,6 +43,16 @@ class FivetranStreamMap(DefaultStreamMap):
         for name in record.copy():
             record[self._transform_name(name)] = record.pop(name)
 
+        if not self.transformed_key_properties:
+            record[FIVETRAN_ID] = hashlib.md5(
+                json.dumps(record).encode(),
+                usedforsecurity=False,
+            ).hexdigest()
+
+        # consider whether we can instead use the `time_extracted` value of the current
+        # `RECORD` message
+        record[FIVETRAN_SYNCED] = utc_now().isoformat()
+
         return record
 
     @override
@@ -48,6 +64,12 @@ class FivetranStreamMap(DefaultStreamMap):
 
         for name in properties.copy():
             properties[self._transform_name(name)] = properties.pop(name)
+
+        if not self.transformed_key_properties:
+            properties[FIVETRAN_ID] = th.StringType().to_dict()
+            self.transformed_key_properties = [FIVETRAN_ID]
+
+        properties[FIVETRAN_SYNCED] = th.DateTimeType().to_dict()
 
     @staticmethod
     def _transform_name(name: str) -> str:
