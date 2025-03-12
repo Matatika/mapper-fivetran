@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import typing as t
@@ -9,7 +10,7 @@ import typing as t
 import humps
 import singer_sdk.typing as th
 from singer_sdk import _singerlib as singer
-from singer_sdk.helpers._flattening import FlatteningOptions
+from singer_sdk.helpers._flattening import FlatteningOptions, flatten_record
 from singer_sdk.helpers._util import utc_now
 from singer_sdk.mapper import DefaultStreamMap, PluginMapper
 from singer_sdk.mapper_base import InlineMapper
@@ -33,8 +34,26 @@ class FivetranStreamMap(DefaultStreamMap):
             flattening_options=FlatteningOptions(max_level=1, separator="_"),
         )
 
+        # preserve flattened schema
+        self.flattened_schema = copy.deepcopy(self.transformed_schema)
+
         self._transform_schema(self.transformed_schema)
         self._transform_key_properties(self.transformed_key_properties)
+
+    @override
+    def flatten_record(self, record):
+        if not self.flattening_options or not self.flattening_enabled:
+            return record
+
+        # reference flattened schema specifically for record lookup, as other
+        # transformations are applied to `self.transformed_schema` that affect
+        # the property key in schema checks
+        return flatten_record(
+            record,
+            flattened_schema=self.flattened_schema,
+            max_level=self.flattening_options.max_level,
+            separator=self.flattening_options.separator,
+        )
 
     @override
     def transform(self, record):
