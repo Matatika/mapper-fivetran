@@ -37,8 +37,8 @@ class FivetranStreamMap(DefaultStreamMap):
         # preserve flattened schema
         self.flattened_schema = copy.deepcopy(self.transformed_schema)
 
-        self._transform_schema(self.transformed_schema)
-        self._transform_key_properties(self.transformed_key_properties)
+        self._apply_key_property_transformations()
+        self._apply_schema_transformations()
 
     @override
     def flatten_record(self, record):
@@ -78,15 +78,14 @@ class FivetranStreamMap(DefaultStreamMap):
     def get_filter_result(self, record):
         return True
 
-    def _transform_schema(self, schema: dict[str]) -> None:
-        properties: dict[str] = schema["properties"]
+    def _apply_schema_transformations(self):
+        properties: dict[str] = self.transformed_schema["properties"]
 
         for name in properties.copy():
             properties[self._transform_name(name)] = properties.pop(name)
 
         if not self.transformed_key_properties:
             properties[FIVETRAN_ID] = th.StringType().to_dict()
-            self.transformed_key_properties = [FIVETRAN_ID]
 
         properties[FIVETRAN_SYNCED] = th.DateTimeType().to_dict()
 
@@ -95,10 +94,13 @@ class FivetranStreamMap(DefaultStreamMap):
         name = humps.decamelize(name)
         return name.replace(".", "_")
 
-    @classmethod
-    def _transform_key_properties(cls, key_properties: list[str]) -> None:
-        for i, name in enumerate(key_properties):
-            key_properties[i] = cls._transform_name(name)
+    def _apply_key_property_transformations(self):
+        if not self.transformed_key_properties:
+            self.transformed_key_properties = [FIVETRAN_ID]
+            return
+
+        for i, name in enumerate(self.transformed_key_properties):
+            self.transformed_key_properties[i] = self._transform_name(name)
 
 
 class FivetranMapper(InlineMapper):
