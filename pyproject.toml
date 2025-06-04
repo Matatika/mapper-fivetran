@@ -22,7 +22,7 @@ license-files = [ "LICENSE" ]
 requires-python = ">=3.9"
 dependencies = [
     "pyhumps>=3.8.0",
-    "singer-sdk~=0.44.3",
+    "singer-sdk~=0.46.4",
 ]
 
 [project.optional-dependencies]
@@ -37,7 +37,7 @@ mapper-fivetran = 'mapper_fivetran.mapper:FivetranMapper.cli'
 [dependency-groups]
 dev = [
     "pytest>=8",
-    "singer-sdk[testing]~=0.44.3",
+    "singer-sdk[testing]",
 ]
 
 [tool.pytest.ini_options]
