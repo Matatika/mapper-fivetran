@@ -22,7 +22,7 @@ license-files = [ "LICENSE" ]
 requires-python = ">=3.9"
 dependencies = [
     "pyhumps>=3.8.0",
-    "singer-sdk~=0.46.4",
+    "singer-sdk~=0.47.0",
 ]
 
 [project.optional-dependencies]
