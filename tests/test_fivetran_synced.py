@@ -1,5 +1,4 @@
-import ast
-import inspect
+from datetime import datetime
 
 import pytest
 
@@ -12,29 +11,15 @@ def test_constant_matches_system_column():
     assert FIVETRAN_SYNCED == SystemColumns.FIVETRAN_SYNCED.value
 
 
-def test_transform_assigns_iso_timestamp():
-    """Verify `transform` assigns an ISO8601 timestamp to the synced column."""
-    source = inspect.getsource(FivetranStreamMap.transform)
-    tree = ast.parse(source)
-    found = False
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and len(node.targets) == 1:
-            target = node.targets[0]
-            if (
-                isinstance(target, ast.Subscript)
-                and isinstance(target.value, ast.Name)
-                and target.value.id == "record"
-            ):
-                slice_node = target.slice
-                if isinstance(slice_node, ast.Name) and slice_node.id == "FIVETRAN_SYNCED":
-                    if (
-                        isinstance(node.value, ast.Call)
-                        and isinstance(node.value.func, ast.Attribute)
-                        and node.value.func.attr == "isoformat"
-                        and isinstance(node.value.func.value, ast.Call)
-                        and isinstance(node.value.func.value.func, ast.Name)
-                        and node.value.func.value.func.id == "utc_now"
-                    ):
-                        found = True
-                        break
-    assert found, "transform should assign utc_now().isoformat() to FIVETRAN_SYNCED"
+def test_transform_adds_timestamp_column():
+    """transform() should add an ISO timestamp in `FIVETRAN_SYNCED`."""
+    stream_map = FivetranStreamMap(
+        stream_alias="animals",
+        schema={"properties": {}},
+        key_properties=[],
+    )
+
+    out = stream_map.transform({"name": "Otis"})
+
+    assert FIVETRAN_SYNCED in out
+    datetime.fromisoformat(out[FIVETRAN_SYNCED])
