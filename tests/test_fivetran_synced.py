@@ -22,4 +22,9 @@ def test_transform_adds_timestamp_column():
     out = stream_map.transform({"name": "Otis"})
 
     assert FIVETRAN_SYNCED in out
-    datetime.fromisoformat(out[FIVETRAN_SYNCED])
+
+    timestamp = out[FIVETRAN_SYNCED]
+    parsed = datetime.fromisoformat(timestamp)
+
+    assert parsed.isoformat() == timestamp
+    assert parsed.tzinfo is not None
