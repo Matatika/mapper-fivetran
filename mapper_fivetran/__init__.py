@@ -11,6 +11,7 @@ class SystemColumns(str, Enum):
 
     FIVETRAN_ID = "_fivetran_id"
     FIVETRAN_SYNCED = "_fivetran_synced"
+    FIVETRAN_DELETED = "_fivetran_deleted"
 
 
 SYSTEM_COLUMN_VALUES = [c.value for c in SystemColumns]

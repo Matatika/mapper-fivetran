@@ -13,6 +13,7 @@ Built with the [Meltano Mapper SDK](https://sdk.meltano.com) for Singer Mappers.
 - Adding properties pertaining to [Fivetran system columns](https://fivetran.com/docs/core-concepts/system-columns-and-tables)
   - `_fivetran_id`: MD5-hash of a record, added when no `key_properties` are defined for the stream
   - `_fivetran_synced`: ISO8601 timestamp of when the record was processed by the mapper
+  - `_fivetran_deleted`: boolean to indicate soft delete 
 
 <!--
 
