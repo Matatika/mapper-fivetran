@@ -14,9 +14,9 @@ def test_constant_matches_system_column():
 def test_transform_adds_timestamp_column():
     """transform() should add an ISO timestamp in `FIVETRAN_SYNCED`."""
     stream_map = FivetranStreamMap(
-        stream_alias="animals",
-        schema={"properties": {}},
-        key_properties=[],
+        "animals",
+        {"properties": {}},
+        [],
     )
 
     out = stream_map.transform({"name": "Otis"})
