@@ -1,3 +1,5 @@
+"""Tests mapper stream map."""
+
 from datetime import datetime, timezone
 
 import pytest
