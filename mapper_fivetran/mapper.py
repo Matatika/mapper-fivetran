@@ -22,6 +22,10 @@ if t.TYPE_CHECKING:
     from pathlib import PurePath
 
 
+_SDC_EXTRACTED_AT = "_sdc_extracted_at"
+_SDC_DELETED_AT = "_sdc_deleted_at"
+
+
 class FivetranStreamMap(DefaultStreamMap):
     """Fivetran default stream map."""
 
@@ -66,10 +70,12 @@ class FivetranStreamMap(DefaultStreamMap):
                 usedforsecurity=False,
             ).hexdigest()
 
-        record[SystemColumns.FIVETRAN_SYNCED] = record.get(
-            "_SDC_EXTRACTED_AT", utc_now().isoformat()
+        record_lower_keys = {k.lower(): v for k, v in record.items()}
+
+        record[SystemColumns.FIVETRAN_SYNCED] = record_lower_keys.get(
+            _SDC_EXTRACTED_AT, utc_now().isoformat()
         )
-        record[SystemColumns.FIVETRAN_DELETED] = "_SDC_DELETED_AT" in record
+        record[SystemColumns.FIVETRAN_DELETED] = _SDC_DELETED_AT in record_lower_keys
 
         return record
 

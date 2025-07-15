@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import pytest
+
 from mapper_fivetran import SystemColumns
 from mapper_fivetran.mapper import FivetranStreamMap
 
@@ -40,7 +42,11 @@ def test_transform_adds_deleted_column():
     assert not deleted
 
 
-def test_transform_sdc_deleted_at_deleted_column():
+@pytest.mark.parametrize(
+    "column_name",
+    ["_sdc_deleted_at", "_SDC_DELETED_AT"],
+)
+def test_transform_sdc_deleted_at_deleted_column(column_name):
     """transform() should set boolean value of `FIVETRAN_DELETED` when `_SDC_DELETED_AT`."""
     stream_map = FivetranStreamMap(
         "animals",
@@ -49,9 +55,9 @@ def test_transform_sdc_deleted_at_deleted_column():
     )
 
     # given a simple record
-    out = stream_map.transform({"name": "Otis", "_SDC_DELETED_AT": datetime.now()})
+    out = stream_map.transform({"name": "Otis", column_name: datetime.now()})
     # expect _SDC_DELETED_AT still in results
-    assert "_SDC_DELETED_AT" in out
+    assert column_name in out
     # expect FIVETRAN_DELETED column true
     assert SystemColumns.FIVETRAN_DELETED in out
     deleted = out[SystemColumns.FIVETRAN_DELETED]
