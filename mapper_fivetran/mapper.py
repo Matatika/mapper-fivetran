@@ -69,8 +69,6 @@ class FivetranStreamMap(DefaultStreamMap):
                 usedforsecurity=False,
             ).hexdigest()
 
-        # consider whether we can instead use the `time_extracted` value of the current
-        # `RECORD` message
         record[FIVETRAN_SYNCED] = record.get("_SDC_EXTRACTED_AT", utc_now().isoformat())
         record[FIVETRAN_DELETED] = "_SDC_DELETED_AT" in record
 
