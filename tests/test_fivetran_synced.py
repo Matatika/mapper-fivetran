@@ -1,14 +1,7 @@
 from datetime import datetime
 
-import pytest
-
 from mapper_fivetran import SystemColumns
-from mapper_fivetran.mapper import FIVETRAN_SYNCED, FIVETRAN_DELETED, FivetranStreamMap
-
-
-def test_constant_matches_system_column():
-    """FIVETRAN_SYNCED should match the enum value."""
-    assert FIVETRAN_SYNCED == SystemColumns.FIVETRAN_SYNCED.value
+from mapper_fivetran.mapper import FivetranStreamMap
 
 
 def test_transform_adds_timestamp_column():
@@ -21,9 +14,9 @@ def test_transform_adds_timestamp_column():
 
     out = stream_map.transform({"name": "Otis"})
 
-    assert FIVETRAN_SYNCED in out
+    assert SystemColumns.FIVETRAN_SYNCED in out
 
-    timestamp = out[FIVETRAN_SYNCED]
+    timestamp = out[SystemColumns.FIVETRAN_SYNCED]
     parsed = datetime.fromisoformat(timestamp)
 
     assert parsed.isoformat() == timestamp
@@ -41,9 +34,9 @@ def test_transform_adds_deleted_column():
     # given a simple record
     out = stream_map.transform({"name": "Otis"})
     # expect FIVETRAN_DELETED column has been added
-    assert FIVETRAN_DELETED in out
+    assert SystemColumns.FIVETRAN_DELETED in out
     # expect default value false
-    deleted = out[FIVETRAN_DELETED]
+    deleted = out[SystemColumns.FIVETRAN_DELETED]
     assert not deleted
 
 
@@ -58,8 +51,8 @@ def test_transform_sdc_deleted_at_deleted_column():
     # given a simple record
     out = stream_map.transform({"name": "Otis", "_SDC_DELETED_AT": datetime.now()})
     # expect _SDC_DELETED_AT still in results
-    assert '_SDC_DELETED_AT' in out
+    assert "_SDC_DELETED_AT" in out
     # expect FIVETRAN_DELETED column true
-    assert FIVETRAN_DELETED in out
-    deleted = out[FIVETRAN_DELETED]
+    assert SystemColumns.FIVETRAN_DELETED in out
+    deleted = out[SystemColumns.FIVETRAN_DELETED]
     assert deleted

@@ -16,13 +16,10 @@ from singer_sdk.mapper import DefaultStreamMap, PluginMapper
 from singer_sdk.mapper_base import InlineMapper
 from typing_extensions import override
 
+from mapper_fivetran import SystemColumns
+
 if t.TYPE_CHECKING:
     from pathlib import PurePath
-
-
-FIVETRAN_ID = "_fivetran_id"
-FIVETRAN_SYNCED = "_fivetran_synced"
-FIVETRAN_DELETED = "_fivetran_deleted"
 
 
 class FivetranStreamMap(DefaultStreamMap):
@@ -64,13 +61,15 @@ class FivetranStreamMap(DefaultStreamMap):
             record[self._transform_name(name)] = record.pop(name)
 
         if not self.transformed_key_properties:
-            record[FIVETRAN_ID] = hashlib.md5(
+            record[SystemColumns.FIVETRAN_ID] = hashlib.md5(
                 json.dumps(record).encode(),
                 usedforsecurity=False,
             ).hexdigest()
 
-        record[FIVETRAN_SYNCED] = record.get("_SDC_EXTRACTED_AT", utc_now().isoformat())
-        record[FIVETRAN_DELETED] = "_SDC_DELETED_AT" in record
+        record[SystemColumns.FIVETRAN_SYNCED] = record.get(
+            "_SDC_EXTRACTED_AT", utc_now().isoformat()
+        )
+        record[SystemColumns.FIVETRAN_DELETED] = "_SDC_DELETED_AT" in record
 
         return record
 
@@ -85,10 +84,10 @@ class FivetranStreamMap(DefaultStreamMap):
             properties[self._transform_name(name)] = properties.pop(name)
 
         if not self.transformed_key_properties:
-            properties[FIVETRAN_ID] = th.StringType().to_dict()
+            properties[SystemColumns.FIVETRAN_ID] = th.StringType().to_dict()
 
-        properties[FIVETRAN_SYNCED] = th.DateTimeType().to_dict()
-        properties[FIVETRAN_DELETED] = th.BooleanType().to_dict()
+        properties[SystemColumns.FIVETRAN_SYNCED] = th.DateTimeType().to_dict()
+        properties[SystemColumns.FIVETRAN_DELETED] = th.BooleanType().to_dict()
 
     @staticmethod
     def _transform_name(name: str) -> str:
@@ -97,7 +96,7 @@ class FivetranStreamMap(DefaultStreamMap):
 
     def _apply_key_property_transformations(self):
         if not self.transformed_key_properties:
-            self.transformed_key_properties = [FIVETRAN_ID]
+            self.transformed_key_properties = [SystemColumns.FIVETRAN_ID]
             return
 
         for i, name in enumerate(self.transformed_key_properties):
