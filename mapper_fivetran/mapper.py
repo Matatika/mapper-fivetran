@@ -71,8 +71,8 @@ class FivetranStreamMap(DefaultStreamMap):
 
         # consider whether we can instead use the `time_extracted` value of the current
         # `RECORD` message
-        record[FIVETRAN_SYNCED] = record['_SDC_EXTRACTED_AT'] if '_SDC_EXTRACTED_AT' in record else utc_now().isoformat()
-        record[FIVETRAN_DELETED] = '_SDC_DELETED_AT' in record
+        record[FIVETRAN_SYNCED] = record.get("_SDC_EXTRACTED_AT", utc_now().isoformat())
+        record[FIVETRAN_DELETED] = "_SDC_DELETED_AT" in record
 
         return record
 
@@ -90,7 +90,6 @@ class FivetranStreamMap(DefaultStreamMap):
             properties[FIVETRAN_ID] = th.StringType().to_dict()
 
         properties[FIVETRAN_SYNCED] = th.DateTimeType().to_dict()
-
         properties[FIVETRAN_DELETED] = th.BooleanType().to_dict()
 
     @staticmethod
