@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -15,6 +15,33 @@ def test_transform_adds_timestamp_column():
     )
 
     out = stream_map.transform({"name": "Otis"})
+
+    assert SystemColumns.FIVETRAN_SYNCED in out
+
+    timestamp = out[SystemColumns.FIVETRAN_SYNCED]
+    parsed = datetime.fromisoformat(timestamp)
+
+    assert parsed.isoformat() == timestamp
+    assert parsed.tzinfo is not None
+
+@pytest.mark.parametrize(
+    "column_name",
+    ["_sdc_extracted_at", "_SDC_EXTRACTED_AT"],
+)
+def test_transform__sdc_extracted_at_adds_timestamp_column(column_name):
+    """transform() should add an ISO timestamp in `FIVETRAN_SYNCED` when `_SDC_EXTRACTED_AT`."""
+    stream_map = FivetranStreamMap(
+        "animals",
+        {"properties": {}},
+        [],
+    )
+
+    out = stream_map.transform(
+        {
+            "name": "Otis",
+            column_name: datetime.now(tz=timezone.utc).isoformat(),
+        }
+    )
 
     assert SystemColumns.FIVETRAN_SYNCED in out
 
@@ -55,7 +82,13 @@ def test_transform_sdc_deleted_at_deleted_column(column_name):
     )
 
     # given a simple record
-    out = stream_map.transform({"name": "Otis", column_name: datetime.now()})
+    out = stream_map.transform(
+        {
+            "name": "Otis",
+            column_name: datetime.now(tz=timezone.utc).isoformat(),
+        }
+    )
+
     # expect _SDC_DELETED_AT still in results
     assert column_name in out
     # expect FIVETRAN_DELETED column true
