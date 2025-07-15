@@ -75,7 +75,9 @@ class FivetranStreamMap(DefaultStreamMap):
         record[SystemColumns.FIVETRAN_SYNCED] = record_lower_keys.get(
             _SDC_EXTRACTED_AT, utc_now().isoformat()
         )
-        record[SystemColumns.FIVETRAN_DELETED] = _SDC_DELETED_AT in record_lower_keys
+        record[SystemColumns.FIVETRAN_DELETED] = bool(
+            record_lower_keys.get(_SDC_DELETED_AT)
+        )
 
         return record
 
