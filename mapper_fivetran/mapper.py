@@ -64,7 +64,7 @@ class FivetranStreamMap(DefaultStreamMap):
         for name in record.copy():
             record[self._transform_name(name)] = record.pop(name)
 
-        if not self.transformed_key_properties:
+        if SystemColumns.FIVETRAN_ID in self.transformed_key_properties:
             record[SystemColumns.FIVETRAN_ID] = hashlib.md5(
                 json.dumps(record).encode(),
                 usedforsecurity=False,
@@ -91,7 +91,7 @@ class FivetranStreamMap(DefaultStreamMap):
         for name in properties.copy():
             properties[self._transform_name(name)] = properties.pop(name)
 
-        if not self.transformed_key_properties:
+        if SystemColumns.FIVETRAN_ID in self.transformed_key_properties:
             properties[SystemColumns.FIVETRAN_ID] = th.StringType().to_dict()
 
         properties[SystemColumns.FIVETRAN_SYNCED] = th.DateTimeType().to_dict()
