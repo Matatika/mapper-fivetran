@@ -9,7 +9,7 @@ import typing as t
 
 import humps
 import singer_sdk.typing as th
-from singer_sdk import _singerlib as singer
+from singer_sdk import singerlib as singer
 from singer_sdk.helpers._flattening import FlatteningOptions, flatten_record
 from singer_sdk.helpers._util import utc_now
 from singer_sdk.mapper import DefaultStreamMap, PluginMapper
