@@ -30,11 +30,20 @@ class FivetranStreamMap(DefaultStreamMap):
     """Fivetran default stream map."""
 
     @override
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(
-            *args,
-            flattening_options=FlatteningOptions(max_level=1, separator="_"),
+    def __init__(
+        self,
+        stream_alias,
+        raw_schema,
+        key_properties,
+        flattening_options,
+    ) -> None:
+        flattening_options = flattening_options and FlatteningOptions(
+            max_level=flattening_options.max_level,
+            flattening_enabled=flattening_options.flattening_enabled,
+            separator="_",  # override default separator
         )
+
+        super().__init__(stream_alias, raw_schema, key_properties, flattening_options)
 
         # preserve flattened schema
         self.flattened_schema = copy.deepcopy(self.transformed_schema)
@@ -150,7 +159,11 @@ class FivetranMapper(InlineMapper):
         )
 
         self.mapper = PluginMapper(
-            plugin_config=self.config,
+            plugin_config={
+                "flattening_enabled": True,
+                "flattening_max_depth": 1,
+                **self.config,
+            },
             logger=self.logger,
         )
         self.mapper.default_mapper_type = FivetranStreamMap
