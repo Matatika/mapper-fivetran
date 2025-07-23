@@ -10,8 +10,10 @@ import typing as t
 import humps
 import singer_sdk.typing as th
 from singer_sdk import singerlib as singer
+from singer_sdk.helpers._classproperty import classproperty
 from singer_sdk.helpers._flattening import FlatteningOptions, flatten_record
 from singer_sdk.helpers._util import utc_now
+from singer_sdk.helpers.capabilities import PluginCapabilities
 from singer_sdk.mapper import DefaultStreamMap, PluginMapper
 from singer_sdk.mapper_base import InlineMapper
 from typing_extensions import override
@@ -167,6 +169,13 @@ class FivetranMapper(InlineMapper):
             logger=self.logger,
         )
         self.mapper.default_mapper_type = FivetranStreamMap
+
+    @override
+    @classproperty
+    def capabilities(self):
+        return [
+            PluginCapabilities.FLATTENING,
+        ]
 
     def map_schema_message(self, message_dict: dict) -> t.Iterable[singer.Message]:
         """Map a schema message to zero or more new messages.
