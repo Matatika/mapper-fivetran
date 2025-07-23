@@ -11,9 +11,10 @@ from mapper_fivetran.mapper import FivetranStreamMap
 @pytest.fixture
 def stream_map():
     return FivetranStreamMap(
-        "animals",
-        {"properties": {}},
-        [],
+        stream_alias="animals",
+        raw_schema={"properties": {}},
+        key_properties=[],
+        flattening_options=None,
     )
 
 
