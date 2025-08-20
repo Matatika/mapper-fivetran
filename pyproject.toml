@@ -67,6 +67,7 @@ allow-star-arg-any = true
 "tests/*" = [
     "D1",
     "S101",
+    "SLF001",
 ]
 
 [tool.ruff.lint.pydocstyle]

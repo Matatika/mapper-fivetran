@@ -110,8 +110,14 @@ class FivetranStreamMap(DefaultStreamMap):
 
     @staticmethod
     def _transform_name(name: str) -> str:
-        name = humps.decamelize(name)
-        return name.replace(".", "_")
+        # handle names with mixed casing, underscores and capital subsequences
+        transformed_parts = [
+            part.lower() if part.isupper() else humps.decamelize(humps.camelize(part))
+            for part in name.split("_")
+        ]
+
+        transformed = "_".join(transformed_parts)
+        return transformed.replace(".", "_")
 
     def _apply_key_property_transformations(self):
         if not self.transformed_key_properties:
