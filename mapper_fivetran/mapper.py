@@ -76,7 +76,7 @@ class FivetranStreamMap(DefaultStreamMap):
             record[self._transform_name(name)] = record.pop(name)
 
         if SystemColumns.FIVETRAN_ID in self.transformed_key_properties:
-            record[SystemColumns.FIVETRAN_ID] = hashlib.md5(
+            record[SystemColumns.FIVETRAN_ID] = hashlib.sha256(
                 json.dumps(record, default=str).encode(),
                 usedforsecurity=False,
             ).hexdigest()
