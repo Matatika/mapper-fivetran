@@ -11,6 +11,7 @@ import typing as t
 import humps
 import singer_sdk.typing as th
 from singer_sdk import singerlib as singer
+from singer_sdk.contrib.msgspec import MsgSpecReader, MsgSpecWriter
 from singer_sdk.helpers._classproperty import classproperty
 from singer_sdk.helpers._flattening import FlatteningOptions, flatten_record
 from singer_sdk.helpers._util import utc_now
@@ -134,6 +135,11 @@ class FivetranMapper(InlineMapper):
     """Sample mapper for Fivetran."""
 
     name = "mapper-fivetran"
+
+    # use msgspec for (de)serialization instead of the default json/simplejson,
+    # which is significantly faster on the per-record read/write hot path
+    message_reader_class = MsgSpecReader
+    message_writer_class = MsgSpecWriter
 
     config_jsonschema = th.PropertiesList(
         # TODO: Replace or remove this example config based on your needs
