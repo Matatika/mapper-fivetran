@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import functools
 import hashlib
 import json
 import typing as t
@@ -81,14 +82,12 @@ class FivetranStreamMap(DefaultStreamMap):
                 usedforsecurity=False,
             ).hexdigest()
 
-        record_lower_keys = {k.lower(): v for k, v in record.items()}
-
-        record[SystemColumns.FIVETRAN_SYNCED] = record_lower_keys.get(
+        # `_transform_name` lowercases every key, so the SDC columns can be looked
+        # up directly without building a lowercased copy of the whole record.
+        record[SystemColumns.FIVETRAN_SYNCED] = record.get(
             _SDC_EXTRACTED_AT, utc_now().isoformat()
         )
-        record[SystemColumns.FIVETRAN_DELETED] = bool(
-            record_lower_keys.get(_SDC_DELETED_AT)
-        )
+        record[SystemColumns.FIVETRAN_DELETED] = bool(record.get(_SDC_DELETED_AT))
 
         return record
 
@@ -109,7 +108,10 @@ class FivetranStreamMap(DefaultStreamMap):
         properties[SystemColumns.FIVETRAN_DELETED] = th.BooleanType().to_dict()
 
     @staticmethod
+    @functools.cache
     def _transform_name(name: str) -> str:
+        # Column names repeat on every record, and the humps round-trip below is
+        # comparatively expensive, so memoize on the (small, bounded) set of names.
         # handle names with mixed casing, underscores and capital subsequences
         transformed_parts = [
             part.lower() if part.isupper() else humps.decamelize(humps.camelize(part))
