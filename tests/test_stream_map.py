@@ -1,4 +1,5 @@
 """Tests mapper stream map."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -30,7 +31,6 @@ def make_stream_map():
 @pytest.fixture
 def stream_map(make_stream_map):
     return make_stream_map()
-
 
 @pytest.mark.parametrize(
     ("properties", "requires_flattening"),
