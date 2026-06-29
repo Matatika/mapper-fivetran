@@ -52,12 +52,23 @@ class FivetranStreamMap(DefaultStreamMap):
         # preserve flattened schema
         self.flattened_schema = copy.deepcopy(self.transformed_schema)
 
+        # Flattening only ever changes a record by expanding or json-dumping an
+        # object/array value, so it's a no-op unless the schema declares a
+        # complex property.
+        self.requires_flattening = any(
+            self._is_complex(prop) for prop in raw_schema["properties"].values()
+        )
+
         self._apply_key_property_transformations()
         self._apply_schema_transformations()
 
     @override
     def flatten_record(self, record):
-        if not self.flattening_options or not self.flattening_enabled:
+        if (
+            not self.flattening_options
+            or not self.flattening_enabled
+            or not self.requires_flattening
+        ):
             return record
 
         # reference flattened schema specifically for record lookup, as other
@@ -107,6 +118,15 @@ class FivetranStreamMap(DefaultStreamMap):
 
         properties[SystemColumns.FIVETRAN_SYNCED] = th.DateTimeType().to_dict()
         properties[SystemColumns.FIVETRAN_DELETED] = th.BooleanType().to_dict()
+
+    @staticmethod
+    def _is_complex(prop: dict) -> bool:
+        # Checked on the raw schema: flatten_schema rewrites object/array
+        # properties to scalar/"string" types, so they no longer show as complex
+        # in the flattened schema. A property with no "type" (e.g. anyOf/oneOf/
+        # $ref) is treated as scalar.
+        type_ = prop.get("type", ())
+        return "object" in type_ or "array" in type_
 
     @staticmethod
     @functools.cache
