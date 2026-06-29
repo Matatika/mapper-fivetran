@@ -41,7 +41,18 @@ def stream_map(make_stream_map):
             id="all scalar",
         ),
         pytest.param({"tags": {"type": "array"}}, True, id="array"),
-        pytest.param({"meta": {"type": "object"}}, True, id="bare object"),
+        pytest.param(
+            # opaque object -> kept as a json-dumped string column, must flatten
+            {"meta": {"type": "object"}},
+            True,
+            id="opaque object (no properties)",
+        ),
+        pytest.param(
+            # explicitly empty properties -> dropped by flatten_schema, skip
+            {"meta": {"type": "object", "properties": {}}},
+            False,
+            id="object with empty properties",
+        ),
         pytest.param(
             {"obj": {"type": "object", "properties": {"x": {"type": "integer"}}}},
             True,

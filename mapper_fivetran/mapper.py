@@ -125,8 +125,18 @@ class FivetranStreamMap(DefaultStreamMap):
         # properties to scalar/"string" types, so they no longer show as complex
         # in the flattened schema. A property with no "type" (e.g. anyOf/oneOf/
         # $ref) is treated as scalar.
+        #
+        # An object with explicitly empty `properties` ({}) is dropped entirely
+        # by flatten_schema, so it needs no flattening. An *opaque* object (no
+        # `properties` key) is kept as a json-dumped string column and does --
+        # hence `!= {}` rather than a plain truthiness check (a missing key is
+        # `None != {}`, i.e. still complex).
         type_ = prop.get("type", ())
-        return "object" in type_ or "array" in type_
+
+        if "object" in type_ and prop.get("properties") != {}:
+            return True
+
+        return "array" in type_
 
     @staticmethod
     @functools.cache
