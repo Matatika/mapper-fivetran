@@ -32,6 +32,7 @@ def make_stream_map():
 def stream_map(make_stream_map):
     return make_stream_map()
 
+
 @pytest.mark.parametrize(
     ("properties", "requires_flattening"),
     [
