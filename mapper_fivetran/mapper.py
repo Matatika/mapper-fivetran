@@ -52,13 +52,6 @@ class FivetranStreamMap(DefaultStreamMap):
         # preserve flattened schema
         self.flattened_schema = copy.deepcopy(self.transformed_schema)
 
-        # Flattening only ever changes a record by expanding or json-dumping an
-        # object/array value, so it's a no-op unless the schema declares a
-        # complex property.
-        self.requires_flattening = any(
-            self._is_complex(prop) for prop in raw_schema["properties"].values()
-        )
-
         self._apply_key_property_transformations()
         self._apply_schema_transformations()
 
@@ -119,24 +112,28 @@ class FivetranStreamMap(DefaultStreamMap):
         properties[SystemColumns.FIVETRAN_SYNCED] = th.DateTimeType().to_dict()
         properties[SystemColumns.FIVETRAN_DELETED] = th.BooleanType().to_dict()
 
-    @staticmethod
-    def _is_complex(prop: dict) -> bool:
+    @functools.cached_property
+    def requires_flattening(self) -> bool:
+        """Whether any property could be expanded or json-dumped by flattening."""
         # Checked on the raw schema: flatten_schema rewrites object/array
-        # properties to scalar/"string" types, so they no longer show as complex
-        # in the flattened schema. A property with no "type" (e.g. anyOf/oneOf/
-        # $ref) is treated as scalar.
-        #
-        # An object with explicitly empty `properties` ({}) is dropped entirely
-        # by flatten_schema, so it needs no flattening. An *opaque* object (no
-        # `properties` key) is kept as a json-dumped string column and does --
-        # hence `!= {}` rather than a plain truthiness check (a missing key is
-        # `None != {}`, i.e. still complex).
-        type_ = prop.get("type", ())
+        # properties to scalar types, so they no longer show as complex in the
+        # flattened schema.
+        for prop in self.raw_schema["properties"].values():
+            # A property with no "type" (anyOf/oneOf/$ref) is treated as scalar.
+            type_ = prop.get("type", ())
 
-        if "object" in type_ and prop.get("properties") != {}:
-            return True
+            if "object" in type_:
+                # An object with explicitly empty `properties` ({}) is dropped by
+                # flatten_schema, so needs no flattening. An *opaque* object (no
+                # `properties` key) is kept as a json-dumped string and does --
+                # hence `!= {}` rather than truthiness (a missing key is
+                # `None != {}`).
+                return prop.get("properties") != {}
 
-        return "array" in type_
+            if "array" in type_:
+                return True
+
+        return False
 
     @staticmethod
     @functools.cache
