@@ -34,7 +34,7 @@ def stream_map(make_stream_map):
 
 
 @pytest.mark.parametrize(
-    ("properties", "requires_flattening"),
+    ("properties", "records_require_flattening"),
     [
         pytest.param(
             {"id": {"type": "integer"}, "name": {"type": "string"}},
@@ -77,8 +77,13 @@ def stream_map(make_stream_map):
         ),
     ],
 )
-def test_requires_flattening(make_stream_map, properties, requires_flattening):
-    assert make_stream_map(properties).requires_flattening is requires_flattening
+def test_records_require_flattening(
+    make_stream_map,
+    properties,
+    records_require_flattening,
+):
+    stream_map: FivetranStreamMap = make_stream_map(properties)
+    assert stream_map.records_require_flattening is records_require_flattening
 
 
 @pytest.mark.parametrize(

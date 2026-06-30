@@ -60,7 +60,7 @@ class FivetranStreamMap(DefaultStreamMap):
         if (
             not self.flattening_options
             or not self.flattening_enabled
-            or not self.requires_flattening
+            or not self.records_require_flattening
         ):
             return record
 
@@ -113,7 +113,7 @@ class FivetranStreamMap(DefaultStreamMap):
         properties[SystemColumns.FIVETRAN_DELETED] = th.BooleanType().to_dict()
 
     @functools.cached_property
-    def requires_flattening(self) -> bool:
+    def records_require_flattening(self) -> bool:
         """Whether any property could be expanded or json-dumped by flattening."""
         # Checked on the raw schema: flatten_schema rewrites object/array
         # properties to scalar types, so they no longer show as complex in the
