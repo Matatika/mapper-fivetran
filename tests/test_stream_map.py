@@ -1,21 +1,143 @@
 """Tests mapper stream map."""
 
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 import pytest
+from singer_sdk.helpers._flattening import FlatteningOptions
 
 from mapper_fivetran import SystemColumns
 from mapper_fivetran.mapper import FivetranStreamMap
 
 
 @pytest.fixture
-def stream_map():
-    return FivetranStreamMap(
-        stream_alias="animals",
-        raw_schema={"properties": {}},
-        key_properties=[],
-        flattening_options=None,
-    )
+def make_stream_map():
+    def _make_stream_map(properties: dict | None = None) -> FivetranStreamMap:
+        return FivetranStreamMap(
+            stream_alias="animals",
+            raw_schema={"properties": properties or {}},
+            key_properties=[],
+            flattening_options=FlatteningOptions(
+                max_level=1,
+                flattening_enabled=True,
+                separator="_",
+            ),
+        )
+
+    return _make_stream_map
+
+
+@pytest.fixture
+def stream_map(make_stream_map):
+    return make_stream_map()
+
+
+@pytest.mark.parametrize(
+    ("properties", "records_require_flattening"),
+    [
+        pytest.param(
+            {"id": {"type": "integer"}, "name": {"type": "string"}},
+            False,
+            id="all scalar",
+        ),
+        pytest.param({"tags": {"type": "array"}}, True, id="array"),
+        pytest.param(
+            # opaque object -> kept as a json-dumped string column, must flatten
+            {"meta": {"type": "object"}},
+            True,
+            id="opaque object (no properties)",
+        ),
+        pytest.param(
+            # explicitly empty properties -> dropped by flatten_schema, skip
+            {"meta": {"type": "object", "properties": {}}},
+            False,
+            id="object with empty properties",
+        ),
+        pytest.param(
+            {"obj": {"type": "object", "properties": {"x": {"type": "integer"}}}},
+            True,
+            id="nested object",
+        ),
+        pytest.param(
+            {"meta": {"type": ["null", "object"]}},
+            True,
+            id="nullable object",
+        ),
+        pytest.param(
+            {"tags": {"type": ["null", "array"]}},
+            True,
+            id="nullable array",
+        ),
+        pytest.param(
+            # anyOf/oneOf/$ref have no top-level "type"; must not raise
+            {"id": {"type": "integer"}, "val": {"anyOf": [{"type": "object"}]}},
+            False,
+            id="property without type",
+        ),
+    ],
+)
+def test_records_require_flattening(
+    make_stream_map,
+    properties,
+    records_require_flattening,
+):
+    stream_map: FivetranStreamMap = make_stream_map(properties)
+    assert stream_map.records_require_flattening is records_require_flattening
+
+
+@pytest.mark.parametrize(
+    ("properties", "record", "expected"),
+    [
+        pytest.param(
+            {"id": {"type": "integer"}},
+            {"id": 1, "name": "Otis", "weight": None},
+            {"id": 1, "name": "Otis", "weight": None},
+            id="flat record passthrough",
+        ),
+        pytest.param(
+            {
+                "id": {"type": "integer"},
+                "obj": {
+                    "type": "object",
+                    "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+                },
+            },
+            {"id": 1, "obj": {"x": 1, "y": 2}},
+            {"id": 1, "obj_x": 1, "obj_y": 2},
+            id="nested object expands",
+        ),
+        pytest.param(
+            {"id": {"type": "integer"}, "tags": {"type": "array"}},
+            {"id": 1, "tags": [1, 2, 3]},
+            {"id": 1, "tags": "[1,2,3]"},
+            id="nested array jsondumped",
+        ),
+        pytest.param(
+            {
+                "id": {"type": "integer"},
+                "obj": {"type": "object", "properties": {"x": {"type": "object"}}},
+            },
+            {"id": 1, "obj": {"x": {"deep": 1}}},
+            {"id": 1, "obj_x": '{"deep":1}'},
+            id="deep nesting jsondumped",
+        ),
+    ],
+)
+def test_flatten_record(make_stream_map, properties, record, expected):
+    assert make_stream_map(properties).flatten_record(record) == expected
+
+
+def test_flatten_skips_nesting_under_undeclared_columns(make_stream_map):
+    """Pass through nesting under columns the schema doesn't declare.
+
+    A value nesting under a column the schema doesn't declare as object/array is
+    passed through unchanged: the gate trusts the schema, and such a field isn't
+    in the schema so a SQL target drops it anyway.
+    """
+    record = {"id": 1, "obj": {"x": 1}}
+
+    assert make_stream_map({"id": {"type": "integer"}}).flatten_record(record) == record
 
 
 def test_transform_no__sdc_extracted_at(stream_map: FivetranStreamMap):

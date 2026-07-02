@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import functools
 import hashlib
 import json
 import typing as t
@@ -10,6 +11,7 @@ import typing as t
 import humps
 import singer_sdk.typing as th
 from singer_sdk import singerlib as singer
+from singer_sdk.contrib.msgspec import MsgSpecReader, MsgSpecWriter
 from singer_sdk.helpers._classproperty import classproperty
 from singer_sdk.helpers._flattening import FlatteningOptions, flatten_record
 from singer_sdk.helpers._util import utc_now
@@ -55,7 +57,11 @@ class FivetranStreamMap(DefaultStreamMap):
 
     @override
     def flatten_record(self, record):
-        if not self.flattening_options or not self.flattening_enabled:
+        if (
+            not self.flattening_options
+            or not self.flattening_enabled
+            or not self.records_require_flattening
+        ):
             return record
 
         # reference flattened schema specifically for record lookup, as other
@@ -81,14 +87,12 @@ class FivetranStreamMap(DefaultStreamMap):
                 usedforsecurity=False,
             ).hexdigest()
 
-        record_lower_keys = {k.lower(): v for k, v in record.items()}
-
-        record[SystemColumns.FIVETRAN_SYNCED] = record_lower_keys.get(
+        # `_transform_name` lowercases every key, so the SDC columns can be looked
+        # up directly without building a lowercased copy of the whole record.
+        record[SystemColumns.FIVETRAN_SYNCED] = record.get(
             _SDC_EXTRACTED_AT, utc_now().isoformat()
         )
-        record[SystemColumns.FIVETRAN_DELETED] = bool(
-            record_lower_keys.get(_SDC_DELETED_AT)
-        )
+        record[SystemColumns.FIVETRAN_DELETED] = bool(record.get(_SDC_DELETED_AT))
 
         return record
 
@@ -108,8 +112,34 @@ class FivetranStreamMap(DefaultStreamMap):
         properties[SystemColumns.FIVETRAN_SYNCED] = th.DateTimeType().to_dict()
         properties[SystemColumns.FIVETRAN_DELETED] = th.BooleanType().to_dict()
 
+    @functools.cached_property
+    def records_require_flattening(self) -> bool:
+        """Whether any property could be expanded or json-dumped by flattening."""
+        # Checked on the raw schema: flatten_schema rewrites object/array
+        # properties to scalar types, so they no longer show as complex in the
+        # flattened schema.
+        for prop in self.raw_schema["properties"].values():
+            # A property with no "type" (anyOf/oneOf/$ref) is treated as scalar.
+            type_ = prop.get("type", ())
+
+            if "object" in type_:
+                # An object with explicitly empty `properties` ({}) is dropped by
+                # flatten_schema, so needs no flattening. An *opaque* object (no
+                # `properties` key) is kept as a json-dumped string and does --
+                # hence `!= {}` rather than truthiness (a missing key is
+                # `None != {}`).
+                return prop.get("properties") != {}
+
+            if "array" in type_:
+                return True
+
+        return False
+
     @staticmethod
+    @functools.cache
     def _transform_name(name: str) -> str:
+        # Column names repeat on every record, and the humps round-trip below is
+        # comparatively expensive, so memoize on the (small, bounded) set of names.
         # handle names with mixed casing, underscores and capital subsequences
         transformed_parts = [
             part.lower() if part.isupper() else humps.decamelize(humps.camelize(part))
@@ -132,6 +162,11 @@ class FivetranMapper(InlineMapper):
     """Sample mapper for Fivetran."""
 
     name = "mapper-fivetran"
+
+    # use msgspec for (de)serialization instead of the default json/simplejson,
+    # which is significantly faster on the per-record read/write hot path
+    message_reader_class = MsgSpecReader
+    message_writer_class = MsgSpecWriter
 
     config_jsonschema = th.PropertiesList(
         # TODO: Replace or remove this example config based on your needs
