@@ -186,12 +186,30 @@ class FivetranMapper(InlineMapper):
 
     config_jsonschema = th.PropertiesList(
         th.Property(
-            "batch_root_dir",
-            th.StringType,
-            title="Batch Output Directory",
+            "batch_config",
+            th.ObjectType(
+                th.Property(
+                    "storage",
+                    th.ObjectType(
+                        th.Property(
+                            "root",
+                            th.StringType,
+                            title="Batch Storage Root",
+                            description=(
+                                "Directory to write transformed Arrow IPC BATCH "
+                                "files to. Defaults to a fresh temporary directory."
+                            ),
+                        ),
+                    ),
+                    title="Batch Storage Configuration",
+                ),
+            ),
+            title="Batch Configuration",
             description=(
-                "Directory to write transformed Arrow IPC BATCH files to. "
-                "Defaults to a fresh temporary directory."
+                "Configuration for BATCH message capabilities. Matches the "
+                "nested `batch_config` shape used elsewhere in the Meltano "
+                "Singer SDK ecosystem, e.g. "
+                "`singer_sdk.helpers.capabilities.BATCH_CONFIG`."
             ),
         ),
     ).to_dict()
@@ -241,11 +259,14 @@ class FivetranMapper(InlineMapper):
     def _batch_output_dir(self) -> Path:
         # cached so repeated BATCH messages share one directory instead of each
         # getting its own fresh `tempfile.mkdtemp()` result
-        directory = Path(
-            self.config.get("batch_root_dir")
-            or tempfile.mkdtemp(prefix="mapper-fivetran-"),
-        )
+        batch_config = self.config.get("batch_config") or {}
+        storage = batch_config.get("storage") or {}
+        root = storage.get("root")
+
+        directory = Path(root or tempfile.mkdtemp(prefix="mapper-fivetran-"))
         directory.mkdir(parents=True, exist_ok=True)
+
+        self.logger.info("Using batch_config: storage.root=%s", directory)
         return directory
 
     def map_schema_message(self, message_dict: dict) -> t.Iterable[singer.Message]:

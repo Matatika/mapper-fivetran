@@ -28,7 +28,7 @@ def _read_arrow_file(uri: str) -> pa.Table:
 @pytest.fixture
 def mapper(tmp_path):
     return FivetranMapper(
-        config={"batch_root_dir": str(tmp_path / "out")},
+        config={"batch_config": {"storage": {"root": str(tmp_path / "out")}}},
         validate_config=False,
     )
 
@@ -140,6 +140,27 @@ def test_map_batch_message_writes_to_configured_dir(mapper: FivetranMapper, tmp_
     out_path = out_message.to_dict()["manifest"][0].removeprefix("file://")
 
     assert Path(out_path).parent == tmp_path / "out"
+
+
+def test_map_batch_message_defaults_to_temp_dir_without_batch_config(tmp_path):
+    mapper = FivetranMapper(config={}, validate_config=False)
+    _register_schema(mapper, key_properties=["name"])
+
+    src = _write_arrow_file(str(tmp_path / "src.arrow"), pa.table({"name": ["Otis"]}))
+
+    (out_message,) = list(
+        mapper.map_batch_message(
+            {
+                "type": "BATCH",
+                "stream": "animals",
+                "encoding": {"format": "arrow"},
+                "manifest": [src],
+            }
+        )
+    )
+    out_path = out_message.to_dict()["manifest"][0].removeprefix("file://")
+
+    assert Path(out_path).exists()
 
 
 def test_map_batch_message_deletes_source_files(mapper: FivetranMapper, tmp_path):

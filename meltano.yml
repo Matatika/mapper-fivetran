@@ -24,16 +24,11 @@ plugins:
     namespace: "mapper_fivetran"
     pip_url: -e .
 
-    # TODO: Declare settings and their types here:
     settings:
-    - name: example_config
+    - name: batch_config.storage.root
       kind: string
-      label: Example Config
-      description: An example configuration setting
+      description: The root directory where the batch files will be stored. Defaults to the system's temporary directory if not specified.
 
-    # TODO: Declare mapping instances here:
     # https://docs.meltano.com/guide/mappers/#example-1
     mappings:
-    - name: example
-      config:
-        example_config: foo
+    - name: fivetran
