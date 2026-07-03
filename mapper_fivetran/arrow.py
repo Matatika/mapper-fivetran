@@ -1,8 +1,9 @@
 """Vectorized Arrow-table transforms for Singer BATCH messages.
 
 Mirrors the per-record transforms in `mapper_fivetran.mapper.FivetranStreamMap`
-(name normalization, `_fivetran_synced`, `_fivetran_deleted`), but operates on
-whole `pyarrow.Table` columns instead of looping over rows, so it stays fast on
+(name normalization, `_fivetran_synced`, `_fivetran_deleted`, and stringifying
+whatever flattening couldn't fully unpack), but operates on whole
+`pyarrow.Table` columns instead of looping over rows, so it stays fast on
 large batches.
 
 `_fivetran_id` is intentionally not computed here: doing so faithfully would
@@ -16,6 +17,7 @@ from __future__ import annotations
 import typing as t
 from datetime import datetime, timezone
 
+import msgspec
 import pyarrow as pa
 import pyarrow.compute as pc
 
@@ -79,6 +81,71 @@ def flatten_table(table: pa.Table, max_level: int) -> pa.Table:
         if not any(pa.types.is_struct(field.type) for field in table.schema):
             break
         table = table.flatten()
+    return table
+
+
+_JSON_ENCODER = msgspec.json.Encoder()
+
+_COMPLEX_TYPE_CHECKS = (
+    pa.types.is_struct,
+    pa.types.is_list,
+    pa.types.is_large_list,
+    pa.types.is_fixed_size_list,
+    pa.types.is_map,
+)
+
+
+def _is_json_extension(data_type: pa.DataType) -> bool:
+    return (
+        isinstance(data_type, pa.BaseExtensionType)
+        and data_type.extension_name == "arrow.json"
+    )
+
+
+def stringify_complex_columns(table: pa.Table) -> pa.Table:
+    """JSON-encode any column still struct-, list-, or map-typed.
+
+    A Singer SCHEMA message property must be scalar, so anything
+    `flatten_table` couldn't fully unpack (nesting past `max_level`, or a
+    list/map column, which `flatten_table` never touches) is serialized to a
+    JSON string here, matching
+    `singer_sdk.helpers._flattening.flatten_record`'s behavior for the
+    record-based transform. No pyarrow compute kernel exists for
+    struct/list -> JSON, so this is a `to_pylist()` + `msgspec.json.encode()`
+    pass -- msgspec rather than the stdlib `json` module since it's ~12-15x
+    faster for this shape of data and already a transitive dependency via
+    `singer-sdk[msgspec]`. Scoped only to the columns that actually need it;
+    nulls are preserved as nulls, not the string `"null"`.
+
+    `arrow.json` extension columns (`pa.json_()`) are handled separately:
+    their storage is already valid JSON text, so they're cast to plain
+    `pa.string()` instead of re-encoded.
+
+    Args:
+        table: The table to stringify complex columns for.
+
+    Returns:
+        A new table with any struct/list/map/json columns replaced by plain
+        string columns.
+    """
+    for i, field in enumerate(table.schema):
+        column: pa.Array | pa.ChunkedArray
+        if _is_json_extension(field.type):
+            column = pc.cast(table.column(i), pa.string())
+            table = table.set_column(i, pa.field(field.name, pa.string()), column)
+            continue
+
+        if not any(check(field.type) for check in _COMPLEX_TYPE_CHECKS):
+            continue
+
+        encoded = [
+            _JSON_ENCODER.encode(value).decode() if value is not None else None
+            for value in table.column(i).to_pylist()
+        ]
+        column = pa.array(encoded, type=pa.string())
+
+        table = table.set_column(i, pa.field(field.name, pa.string()), column)
+
     return table
 
 
@@ -171,6 +238,7 @@ def transform_table(table: pa.Table, stream_map: StreamMap) -> pa.Table:
     """
     if stream_map.flattening_enabled and stream_map.flattening_options is not None:
         table = flatten_table(table, stream_map.flattening_options.max_level)
+        table = stringify_complex_columns(table)
     table = rename_columns(table)
     table = with_fivetran_synced(table)
     return with_fivetran_deleted(table)

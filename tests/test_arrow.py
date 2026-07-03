@@ -14,6 +14,7 @@ from mapper_fivetran.arrow import (
     assert_batch_supported,
     flatten_table,
     rename_columns,
+    stringify_complex_columns,
     transform_table,
     with_fivetran_deleted,
     with_fivetran_synced,
@@ -71,6 +72,62 @@ def test_flatten_table_noop_without_structs():
     flattened = flatten_table(table, max_level=1)
 
     assert flattened.schema.names == ["name"]
+
+
+def test_stringify_complex_columns_encodes_leftover_struct():
+    table = pa.table(
+        {
+            "outer": pa.array(
+                [{"inner": {"value": 1}}],
+                type=pa.struct([("inner", pa.struct([("value", pa.int64())]))]),
+            ),
+        }
+    )
+    flattened = flatten_table(table, max_level=1)
+
+    result = stringify_complex_columns(flattened)
+
+    assert result.schema.field("outer.inner").type == pa.string()
+    assert result.column("outer.inner").to_pylist() == ['{"value":1}']
+
+
+def test_stringify_complex_columns_encodes_list():
+    table = pa.table({"tags": pa.array([["a", "b"]], type=pa.list_(pa.string()))})
+
+    result = stringify_complex_columns(table)
+
+    assert result.schema.field("tags").type == pa.string()
+    assert result.column("tags").to_pylist() == ['["a","b"]']
+
+
+def test_stringify_complex_columns_preserves_null():
+    table = pa.table({"tags": pa.array([None], type=pa.list_(pa.string()))})
+
+    result = stringify_complex_columns(table)
+
+    assert result.column("tags").to_pylist() == [None]
+
+
+def test_stringify_complex_columns_noop_for_scalars():
+    table = pa.table({"name": ["Otis"], "age": [3]})
+
+    result = stringify_complex_columns(table)
+
+    assert result.schema == table.schema
+    assert result.column("name").to_pylist() == ["Otis"]
+
+
+def test_stringify_complex_columns_unwraps_json_extension_type():
+    json_type = pa.json_(pa.string())
+    column = pa.ExtensionArray.from_storage(
+        json_type, pa.array(['{"a":1}', None], type=pa.string())
+    )
+    table = pa.table({"payload": column})
+
+    result = stringify_complex_columns(table)
+
+    assert result.schema.field("payload").type == pa.string()
+    assert result.column("payload").to_pylist() == ['{"a":1}', None]
 
 
 @pytest.mark.parametrize(
@@ -203,3 +260,43 @@ def test_transform_table_end_to_end(stream_map):
         "2024-01-01T00:00:00+00:00"
     ]
     assert result.column(SystemColumns.FIVETRAN_DELETED.value).to_pylist() == [False]
+
+
+def test_transform_table_stringifies_deep_nesting_and_arrays(stream_map):
+    table = pa.table(
+        {
+            "name": ["Otis"],
+            "outer": pa.array(
+                [{"inner": {"value": 1}}],
+                type=pa.struct([("inner", pa.struct([("value", pa.int64())]))]),
+            ),
+            "tags": pa.array([["a", "b"]], type=pa.list_(pa.string())),
+        }
+    )
+
+    result = transform_table(table, stream_map)
+
+    assert result.schema.field("outer_inner").type == pa.string()
+    assert result.column("outer_inner").to_pylist() == ['{"value":1}']
+    assert result.schema.field("tags").type == pa.string()
+    assert result.column("tags").to_pylist() == ['["a","b"]']
+
+
+def test_transform_table_leaves_complex_columns_when_flattening_disabled():
+    stream_map = FivetranStreamMap(
+        stream_alias="animals",
+        raw_schema={"properties": {}},
+        key_properties=["name"],
+        flattening_options=None,
+    )
+    table = pa.table(
+        {
+            "name": ["Otis"],
+            "tags": pa.array([["a", "b"]], type=pa.list_(pa.string())),
+        }
+    )
+
+    result = transform_table(table, stream_map)
+
+    assert pa.types.is_list(result.schema.field("tags").type)
+    assert result.column("tags").to_pylist() == [["a", "b"]]
