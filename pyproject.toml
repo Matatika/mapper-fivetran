@@ -1,6 +1,6 @@
 [project]
 name = "mapper-fivetran"
-version = "0.0.1"
+dynamic = [ "version" ]
 description = "Singer mapper Fivetran, built with the Meltano Singer SDK."
 readme = "README.md"
 authors = [{ name = "Reuben Frankel", email = "rfrankel@matatika.com" }]
@@ -43,6 +43,10 @@ dev = [
     "singer-sdk[testing]",
 ]
 
+[tool.hatch.version]
+fallback-version = "0.1.0.dev0"
+source = "vcs"
+
 [tool.pytest.ini_options]
 addopts = [
     "--durations=10",
@@ -79,5 +83,6 @@ convention = "google"
 [build-system]
 requires = [
     "hatchling>=1.27.0,<2",
+    "hatch-vcs",
 ]
 build-backend = "hatchling.build"
