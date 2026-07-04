@@ -6,10 +6,14 @@ import copy
 import functools
 import hashlib
 import json
+import tempfile
 import typing as t
+from dataclasses import dataclass
+from functools import cached_property
+from pathlib import Path
 
-import humps
 import singer_sdk.typing as th
+from pyarrow import ipc
 from singer_sdk import singerlib as singer
 from singer_sdk.contrib.msgspec import MsgSpecReader, MsgSpecWriter
 from singer_sdk.helpers._classproperty import classproperty
@@ -18,9 +22,12 @@ from singer_sdk.helpers._util import utc_now
 from singer_sdk.helpers.capabilities import PluginCapabilities
 from singer_sdk.mapper import DefaultStreamMap, PluginMapper
 from singer_sdk.mapper_base import InlineMapper
+from singer_sdk.singerlib.encoding.base import SingerMessageType
 from typing_extensions import override
 
 from mapper_fivetran import SystemColumns
+from mapper_fivetran._util import new_uuid, transform_name
+from mapper_fivetran.arrow import assert_batch_supported, transform_table
 
 if t.TYPE_CHECKING:
     from pathlib import PurePath
@@ -28,6 +35,7 @@ if t.TYPE_CHECKING:
 
 _SDC_EXTRACTED_AT = "_sdc_extracted_at"
 _SDC_DELETED_AT = "_sdc_deleted_at"
+_SUPPORTED_BATCH_FORMAT = "arrow"
 
 
 class FivetranStreamMap(DefaultStreamMap):
@@ -136,18 +144,10 @@ class FivetranStreamMap(DefaultStreamMap):
         return False
 
     @staticmethod
-    @functools.cache
     def _transform_name(name: str) -> str:
-        # Column names repeat on every record, and the humps round-trip below is
-        # comparatively expensive, so memoize on the (small, bounded) set of names.
-        # handle names with mixed casing, underscores and capital subsequences
-        transformed_parts = [
-            part.lower() if part.isupper() else humps.decamelize(humps.camelize(part))
-            for part in name.split("_")
-        ]
-
-        transformed = "_".join(transformed_parts)
-        return transformed.replace(".", "_")
+        # memoized in `transform_name` itself, since the Arrow BATCH path
+        # (`mapper_fivetran.arrow.rename_columns`) calls it directly too
+        return transform_name(name)
 
     def _apply_key_property_transformations(self):
         if not self.transformed_key_properties:
@@ -156,6 +156,22 @@ class FivetranStreamMap(DefaultStreamMap):
 
         for i, name in enumerate(self.transformed_key_properties):
             self.transformed_key_properties[i] = self._transform_name(name)
+
+
+@dataclass
+class BatchMessage(singer.Message):
+    """Singer BATCH message.
+
+    `singer_sdk.singerlib` has no `BatchMessage` class as of 0.48.
+    """
+
+    stream: str
+    encoding: dict
+    manifest: list[str]
+
+    def __post_init__(self) -> None:
+        """Set the message type."""
+        self.type = SingerMessageType.BATCH
 
 
 class FivetranMapper(InlineMapper):
@@ -169,12 +185,32 @@ class FivetranMapper(InlineMapper):
     message_writer_class = MsgSpecWriter
 
     config_jsonschema = th.PropertiesList(
-        # TODO: Replace or remove this example config based on your needs
         th.Property(
-            "example_config",
-            th.StringType,
-            title="Example Configuration",
-            description="An example config, replace or remove based on your needs.",
+            "batch_config",
+            th.ObjectType(
+                th.Property(
+                    "storage",
+                    th.ObjectType(
+                        th.Property(
+                            "root",
+                            th.StringType,
+                            title="Batch Storage Root",
+                            description=(
+                                "Directory to write transformed Arrow IPC BATCH "
+                                "files to. Defaults to a fresh temporary directory."
+                            ),
+                        ),
+                    ),
+                    title="Batch Storage Configuration",
+                ),
+            ),
+            title="Batch Configuration",
+            description=(
+                "Configuration for BATCH message capabilities. Matches the "
+                "nested `batch_config` shape used elsewhere in the Meltano "
+                "Singer SDK ecosystem, e.g. "
+                "`singer_sdk.helpers.capabilities.BATCH_CONFIG`."
+            ),
         ),
     ).to_dict()
 
@@ -216,7 +252,22 @@ class FivetranMapper(InlineMapper):
     def capabilities(self):
         return [
             PluginCapabilities.FLATTENING,
+            PluginCapabilities.BATCH,
         ]
+
+    @cached_property
+    def _batch_output_dir(self) -> Path:
+        # cached so repeated BATCH messages share one directory instead of each
+        # getting its own fresh `tempfile.mkdtemp()` result
+        batch_config = self.config.get("batch_config") or {}
+        storage = batch_config.get("storage") or {}
+        root = storage.get("root")
+
+        directory = Path(root or tempfile.mkdtemp(prefix="mapper-fivetran-"))
+        directory.mkdir(parents=True, exist_ok=True)
+
+        self.logger.info("Using batch_config: storage.root=%s", directory)
+        return directory
 
     def map_schema_message(self, message_dict: dict) -> t.Iterable[singer.Message]:
         """Map a schema message to zero or more new messages.
@@ -261,6 +312,70 @@ class FivetranMapper(InlineMapper):
                     version=message_dict.get("version"),
                     time_extracted=utc_now(),
                 )
+
+    def map_batch_message(self, message_dict: dict) -> t.Iterable[singer.Message]:
+        """Map a batch message to zero or more new messages.
+
+        Applies the same transforms as `map_record_message`, but vectorized
+        over whole Arrow IPC files instead of individual records. Unlike the
+        record path, `_fivetran_id` is not computed for BATCH messages: see
+        `mapper_fivetran.arrow.assert_batch_supported`.
+
+        Source files listed in the incoming manifest are deleted once fully
+        read. Output files are left for the downstream consumer to clean up.
+
+        Args:
+            message_dict: A BATCH message JSON dictionary.
+
+        Raises:
+            ValueError: If the batch encoding format is not 'arrow'.
+        """
+        self._assert_line_requires(
+            message_dict, requires={"stream", "encoding", "manifest"}
+        )
+
+        stream_id: str = message_dict["stream"]
+        encoding: dict = message_dict["encoding"]
+        if encoding.get("format") != _SUPPORTED_BATCH_FORMAT:
+            msg = (
+                f"mapper-fivetran only supports {_SUPPORTED_BATCH_FORMAT!r} BATCH "
+                f"encoding, got {encoding.get('format')!r}"
+            )
+            raise ValueError(msg)
+
+        tables = []
+        for file_uri in message_dict["manifest"]:
+            src_path = Path(file_uri.removeprefix("file://"))
+            with ipc.open_file(str(src_path)) as reader:
+                tables.append(reader.read_all())
+            # the mapper is the sole consumer of source batch files, so it's
+            # safe to remove them once fully read; output files are left for
+            # the downstream consumer (e.g. a target) to clean up
+            src_path.unlink()
+
+        output_dir = self._batch_output_dir
+
+        for stream_map in self.mapper.stream_maps[stream_id]:
+            assert_batch_supported(stream_id, stream_map)
+
+            new_manifest = []
+            for i, table in enumerate(tables):
+                transformed = transform_table(table, stream_map)
+
+                out_path = (
+                    output_dir / f"{stream_map.stream_alias}_{new_uuid().hex}_{i}.arrow"
+                )
+                with ipc.new_file(str(out_path), transformed.schema) as writer:
+                    for batch in transformed.to_batches():
+                        writer.write_batch(batch)
+
+                new_manifest.append(f"file://{out_path}")
+
+            yield BatchMessage(
+                stream=stream_map.stream_alias,
+                manifest=new_manifest,
+                encoding=encoding,
+            )
 
     def map_state_message(self, message_dict: dict) -> t.Iterable[singer.Message]:
         """Map a state message to zero or more new messages.

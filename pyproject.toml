@@ -21,6 +21,8 @@ classifiers = [
 license-files = [ "LICENSE" ]
 requires-python = ">=3.9"
 dependencies = [
+    "msgspec>=0.18",
+    "pyarrow>=17",
     "pyhumps>=3.8.0",
     "singer-sdk[msgspec]~=0.48.1",
 ]
@@ -36,6 +38,7 @@ mapper-fivetran = 'mapper_fivetran.mapper:FivetranMapper.cli'
 
 [dependency-groups]
 dev = [
+    "pyarrow-stubs>=20.0.0.20260625",
     "pytest>=8",
     "singer-sdk[testing]",
 ]
@@ -46,7 +49,7 @@ addopts = [
 ]
 
 [tool.mypy]
-python_version = "3.12"
+follow_untyped_imports = true
 warn_unused_configs = true
 
 [tool.ruff.lint]
